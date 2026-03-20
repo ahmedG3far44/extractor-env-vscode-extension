@@ -16,6 +16,49 @@ const REGEX_PATTERNS = [
 // 2. Ignore heavy directories
 const EXCLUDE_PATTERN = '**/{node_modules,.git,.next,dist,build,venv,out,vendor}/**';
 
+// Helper: Smart Default Guesser
+function getDefaultEnvValue(key: string): string {
+    const k = key.toUpperCase();
+    
+    // Environment & Networking
+    if (k === 'NODE_ENV') return 'development';
+    if (k.includes('PORT')) return '8080';
+    if (k.includes('HOST')) return 'localhost';
+    
+    // Databases
+    if (k.includes('DATABASE_URL') || k.includes('DB_URL')) return 'postgresql://user:password@localhost:5432/mydb';
+    if (k.includes('MONGO_URI') || k.includes('MONGODB_URL')) return 'mongodb://localhost:27017/mydb';
+    if (k.includes('REDIS')) return 'redis://localhost:6379';
+    if (k.includes('DB_USER')) return 'postgres';
+    if (k.includes('DB_PASS')) return 'password';
+    if (k.includes('DB_NAME')) return 'my_database';
+    if (k.includes('DB_PORT')) return '5432';
+    
+    // Auth & Security
+    if (k.includes('JWT_SECRET') || k.includes('TOKEN_SECRET')) return 'your_jwt_secret';
+    if (k.includes('API_KEY')) return 'your_api_key';
+    if (k.includes('SECRET')) return 'your_secret_string';
+    if (k.includes('PASSWORD') || k.includes('PASS')) return 'your_password';
+    
+    // Cloud & Providers
+    if (k.includes('AWS_ACCESS')) return 'your_aws_access_key';
+    if (k.includes('AWS_SECRET')) return 'your_aws_secret_key';
+    if (k.includes('AWS_REGION')) return 'us-east-1';
+    if (k.includes('STRIPE_SECRET') || k.includes('STRIPE_API')) return 'sk_test_your_stripe_key';
+    if (k.includes('STRIPE_WEBHOOK')) return 'whsec_your_webhook_secret';
+    
+    // Mail
+    if (k.includes('SMTP_HOST')) return 'smtp.mailtrap.io';
+    if (k.includes('SMTP_PORT')) return '2525';
+    if (k.includes('SMTP_USER')) return 'your_smtp_user';
+    
+    // URLs
+    if (k.includes('URL') || k.includes('URI')) return 'http://localhost:3000';
+    
+    // Fallback for anything else
+    return 'your_value_here';
+}
+
 export function activate(context: vscode.ExtensionContext) {
     let disposable = vscode.commands.registerCommand('env-extractor.generateEnv', async () => {
         
@@ -28,7 +71,6 @@ export function activate(context: vscode.ExtensionContext) {
 
         try {
             // 3. Find Sub-Project Roots using "Marker Files"
-            // This covers Node/JS, Python, PHP, and .NET projects
             const markerFiles = await vscode.workspace.findFiles(
                 '**/{package.json,requirements.txt,manage.py,pyproject.toml,composer.json,*.csproj}', 
                 EXCLUDE_PATTERN
@@ -52,14 +94,13 @@ export function activate(context: vscode.ExtensionContext) {
                 if (!workspaceFolder) continue;
 
                 // 5. Determine the correct root for THIS specific file
-                let targetRoot = workspaceFolder.uri.fsPath; // Fallback to main workspace root
+                let targetRoot = workspaceFolder.uri.fsPath; 
                 
                 for (const root of projectRoots) {
-                    // Check if the current file is inside this project root's directory
                     const relative = path.relative(root, file.fsPath);
                     if (!relative.startsWith('..') && !path.isAbsolute(relative)) {
                         targetRoot = root;
-                        break; // Stop at the first (deepest) match
+                        break;
                     }
                 }
 
@@ -83,9 +124,10 @@ export function activate(context: vscode.ExtensionContext) {
             for (const [dirPath, variables] of envMap.entries()) {
                 if (variables.size === 0) continue;
 
+                // CHANGED: Map now applies the smart default guesser
                 const envContent = Array.from(variables)
                     .sort()
-                    .map(v => `${v}=`)
+                    .map(v => `${v}=${getDefaultEnvValue(v)}`)
                     .join('\n');
 
                 const targetUri = vscode.Uri.file(path.join(dirPath, '.env.example'));
